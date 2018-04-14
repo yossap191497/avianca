@@ -1,7 +1,27 @@
-#Yohana
+/* 2. Create 2 Tablespaces
+a. first one with 2 Gb and 1 datafile, tablespace should be named "avianca" */
+
+CREATE TABLESPACE AVIANCA DATAFILE 'AVIANCA.DBF' SIZE 2000M;
+
+/* b. Undo tablespace with 25Mb of space and 1 datafile */
+
+CREATE UNDO TABLESPACE AVIANCA1 DATAFILE 'AVIANCA1.DBF' SIZE 25M;
 
 
-#Yerson
+
+/* 3. Set the undo tablespace to be used in the system */
+
+ALTER SYSTEM SET UNDO_TABLESPACE = AVIANCA1;
 
 
-#Victor
+
+/* 4. Create a DBA user (with the role DBA) and assign it to the tablespace called "avianca", this user has
+unlimited space on the tablespace (The user should have permission to connect) */
+
+CREATE USER DBA1
+	IDENTIFIED BY DBA1
+	DEFAULT TABLESPACE AVIANCA;
+
+GRANT DBA TO DBA1;
+
+GRANT CREATE SESSION TO DBA1;
