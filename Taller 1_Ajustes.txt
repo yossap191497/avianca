@@ -1,0 +1,35 @@
+
+MEJORAS Y CORRECCIONES:
+
+* El género en la tabla EMPLEADOS también debería tener un CHECK
+
+ALTER TABLE EMPLEADOS 
+	ADD constraint GENERO_CK CHECK (GENERO IN ('FEMENINO', 'MASCULINO'));
+
+
+* No existe el diagrama Entidad relación en el repositorio
+
+SE EXPORTA EL DIAGRAMA
+
+5. Creation of profiles (0.125): OK
+* El perfil DEVELOPMENT debe tener en FAILED_LOGIN_ATTEMPTS el valor de UNLIMITED}
+
+ALTER PROFILE DEVELOPMENT LIMIT 
+	FAILED_LOGIN_ATTEMPTS UNLIMITED;
+	
+SELECT * FROM DBA_PROFILES WHERE PROFILE = 'DEVELOPMENT';
+
+
+8. Creation of tables / primary keys / foreign keys / sequences (0.125):
+* No hay secuencias creadas (En el video si, pero en el archivo no están)
+
+SE GENERA NUEVAMENTE EL SCRIPT DE LA BASE DE DATOS PARA INCLUIR LAS SECUENCIAS
+
+* Sólo hay 1000 empleados en el repositorio
+
+SE INSERTAN A LA BASE DE DATOS 1500 EMPLEADOS
+
+SELECT COUNT(*) FROM EMPLEADOS;
+
+
+SE ACTUALIZA EL ARCHIVO Taller1.txt ENTREGADO EN LA PRIMERA PARTE PARA ACTUALIZAR LOS PUNTOS CORREGIDOS.

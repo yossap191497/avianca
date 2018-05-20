@@ -12,11 +12,9 @@ CREATE TABLESPACE AVIANCA DATAFILE 'AVIANCA.DBF' SIZE 2000M;
 CREATE UNDO TABLESPACE AVIANCA1 DATAFILE 'AVIANCA1.DBF' SIZE 25M;
 
 
-
 /* 3. Set the undo tablespace to be used in the system */
 
 ALTER SYSTEM SET UNDO_TABLESPACE = AVIANCA1;
-
 
 
 /* 4. Create a DBA user (with the role DBA) and assign it to the tablespace called "avianca", this user has
@@ -29,6 +27,7 @@ CREATE USER DBA1
 GRANT DBA TO DBA1;
 
 GRANT CREATE SESSION TO DBA1;
+
 
 /* 5. Create 2 profiles
 a. Profile 1: "clerk" password life 40 days, one session per user, 10 minutes idle, 4 failed login attempts */
@@ -45,7 +44,9 @@ CREATE PROFILE DEVELOPMENT LIMIT
     SESSIONS_PER_USER 2
     PASSWORD_LIFE_TIME 100
     IDLE_TIME 30;
+	FAILED_LOGIN_ATTEMPTS UNLIMITED;
 
+	
 /* 6. Create 4 users, assign them the tablespace "avianca"; 2 of them should have the clerk profile and the
 remaining the development profile, all the users should be allow to connect to the database */
 
