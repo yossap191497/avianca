@@ -1,0 +1,217 @@
+
+-- Yohana cano hernandez
+-- Victor Galvis Zuleta
+-- Yerson Ossa Patiño 
+
+
+-- a) Los directores de tecnología desean saber el estado de un avión, los posibles estados son (Vuelo, Tierra, Mantenimiento,
+--    Reparación), para esto se pide agregar una nueva columna enla tabla donde se almacena la información de los aviones
+
+-- b) También desean conocer el aeropuerto dónde se encuentra actualmente, si el avión está en vuelo debe registrarse el 
+--    aeropuerto desde donde despegó y cuando aterriza, se actualiza esta información. Si el avión está en mantenimiento
+--    o en reparación debe registrar el aeropuerto donde se esté realizando esa operación (Usualmente El Dorado)
+
+CREATE TABLE AVIONES 
+( 
+  ID INTEGER NOT NULL PRIMARY KEY
+, MATRICULA VARCHAR2(255) NOT NULL
+, ESTADO VARCHAR2(255) NOT NULL CHECK (ESTADO IN('VUELO', 'TIERRA', 'MANTENIMIENTO', 'REPARACIÓN'))
+, SERIAL VARCHAR2(255) NOT NULL 
+, EDAD VARCHAR2(255) NOT NULL 
+, MODELO VARCHAR2(255) NOT NULL 
+, MARCA VARCHAR2(255) NOT NULL CHECK (MARCA IN ('AIRBUS', 'ATR', 'BOEING', 'EMBRAER'))
+, NUMERO_ASIENTOS_EJECUTIVA INTEGER NOT NULL
+, NUMERO_ASIENTOS_ECONOMICA INTEGER NOT NULL
+, AEROPUERTO_ID INTEGER NOT NULL CONSTRAINT FK_AVION_AEROPUERTO REFERENCES AEROPUERTOS(ID) 
+);
+
+SELECT * FROM AVIONES;
+
+-- c) Asimismo se desea conocer el estado de los vuelos confirmados, los posibles estados son (en vuelo, cancelado, retrasado, confirmado, 
+--    abordando, programado).
+
+CREATE TABLE VUELOS 
+(
+  ID INTEGER PRIMARY KEY NOT NULL 
+, FECHA_HORA_ESTIMADA_SALIDA TIMESTAMP NOT NULL 
+, FECHA_HORA_ESTIMADA_LLEGADA TIMESTAMP NOT NULL 
+, FECHA_HORA_REAL_SALIDA TIMESTAMP NOT NULL 
+, FECHA_HORA_REAL_LLEGADA TIMESTAMP NOT NULL 
+, DURACION_REAL TIMESTAMP NOT NULL 
+, ESTADO VARCHAR(255) CHECK (ESTADO IN('EN VUELO', 'CANCELADO', 'RETRASADO','CONFIRMADO', 'ABORDANDO', 'PROGRAMADO'))
+, CANTIDAD_PASAJEROS_EJECUTIVA INTEGER NOT NULL
+, CANTIDAD_PASAJEROS_ECONOMICA INTEGER NOT NULL
+, CONFIRMACION_VUELO NUMBER(1) NOT NULL CHECK(CONFIRMACION_VUELO IN (0, 1))
+, PILOTO_COPILOTO_ID INTEGER NOT NULL CONSTRAINT FK_VUELO_PILOTO_COPILOTO REFERENCES PILOTOS(ID)
+, PILOTO_ID INTEGER NOT NULL CONSTRAINT FK_VUELO_PILOTO REFERENCES PILOTOS(ID)
+, AVION_ID INTEGER NOT NULL CONSTRAINT FK_VUELO_AVION REFERENCES AVIONES(ID)
+, PROGRAMACION_ID INTEGER NOT NULL CONSTRAINT FK_VUELO_PROGRAMACION REFERENCES PROGRAMACIONES(ID)
+);
+
+SELECT * FROM VUELOS;
+
+-- 1) Se desea asignar un avión a un vuelo confirmado, para esto es necesario una vista que dado el id de un vuelo confirmado,
+--    busque los aviones que se encuentran en el aeropuerto de salida (Utilizando la hora estimada de llegada a esa 
+--    ciudad / aeropuerto de otros vuelos) 2 horas antes de la fecha estimada de salida.
+
+CREATE OR REPLACE VIEW AEROPUERTOS_DEL_VUELO AS
+SELECT V.ID, V.FECHA_HORA_ESTIMADA_SALIDA AS SALIDA, R.AEROPUERTO_DESTINO_ID, R.AEROPUERTO_ORIGEN_ID
+    FROM VUELOS V
+        INNER JOIN PROGRAMACIONES P ON V.PROGRAMACION_ID = P.ID
+        INNER JOIN RUTAS R ON P.RUTA_ID = R.ID
+        WHERE V.ESTADO = 'PROGRAMADO'
+        ORDER BY SALIDA;
+
+CREATE OR REPLACE VIEW DISPONIBILIDAD_AVIONES AS
+SELECT VU.ID AS VUELO_ID, AV.ID, (AV.NUMERO_ASIENTOS_ECONOMICA + AV.NUMERO_ASIENTOS_EJECUTIVA) AS NUMERO_ASIENTOS,
+	AV.MATRICULA, AV.ESTADO, VU.FECHA_HORA_ESTIMADA_LLEGADA, V.SALIDA AS SALIDA_VUELO_CONFIRMADO,
+(V.SALIDA + INTERVAL '-2' HOUR ) AS RESTA, V.ID AS VUELO_PROGRAMADO
+    FROM VUELOS VU
+        INNER JOIN PROGRAMACIONES PR On VU.Programacion_Id = PR.ID
+        INNER JOIN RUTAS RU On PR.RUTA_ID = RU.ID
+        INNER JOIN AVIONES AV  ON AV.ID = VU.AVION_ID
+        INNER JOIN AEROPUERTOS_DEL_VUELO V ON RU.AEROPUERTO_DESTINO_ID = V.AEROPUERTO_ORIGEN_ID
+        WHERE  VU.FECHA_HORA_ESTIMADA_LLEGADA < (V.SALIDA + INTERVAL '-2' HOUR ) AND VU.ESTADO = 'EN VUELO';
+        
+-- * IMPLEMENTACIÓN DE LA VISTA QUE DEVUELVE LOS AVIONES QUE PUEDEN SER ASIGNADOS A UN VUELO
+SELECT * FROM DISPONIBILIDAD_AVIONES 
+WHERE VUELO_PROGRAMADO = 28;
+
+
+
+-- 2) Realice un procedimiento almacenado que programe la tripulación del vuelo 5 horas antes del vuelo
+--    a) Invocar la vista del punto dos y asignar el primer avión encontrado.
+--    b) Con la información del vuelo debe asignar:
+--       i) El piloto y el copiloto:
+--          (1) Para la simplicidad del ejercicio, busque los pilotos que se encuentran activos, tienen al menos 2 horas de
+--              descanso y se encuentran en la ciudad donde parte el vuelo.
+--      ii) La tripulación siguiendo la lógica del taller anterior dependiendo del número de horas del vuelo programado y la
+--          cantidad de sillas del avión.
+--          (1) También por simplicidad del ejercicio se debe buscar los auxiliares de vuelo que tienen al menos 2 horas de
+--              descanso, que estén activos y que se encuentren en la ciudad donde parte el vuelo.
+--    c) Actualizar el estado del vuelo a “Confirmado”
+
+-- VISTAS IMPLEMENTADAS EN EL PROCEDIMIENTO ALMACENADO
+
+CREATE OR REPLACE VIEW GETPILOTOS
+AS
+    SELECT P.ID ,TO_CHAR(E.HORAS_DESCANSO,'HH24:MI') AS HORAS_DESCANSO,E.CIUDAD_PAIS_ID AS CIUDAD
+    FROM PILOTOS  P
+    INNER JOIN EMPLEADOS E ON P.EMPLEADO_ID = E.ID
+    WHERE TO_TIMESTAMP(TO_CHAR(E.HORAS_DESCANSO,'HH24:MI'),'HH24:MI') >= TO_TIMESTAMP('02:00','HH24:MI') 
+    AND ESTADO = 'ACTIVO'; 
+    
+CREATE OR REPLACE VIEW GET_AUXILIARES
+AS
+    SELECT E.ID ,TO_CHAR(E.HORAS_DESCANSO,'HH24:MI') AS HORAS_DESCANSO,E.CIUDAD_PAIS_ID AS CIUDAD
+    FROM EMPLEADOS E 
+    WHERE TO_TIMESTAMP(TO_CHAR(E.HORAS_DESCANSO,'HH24:MI'),'HH24:MI') >= TO_TIMESTAMP('02:00','HH24:MI') 
+    AND E.ESTADO = 'ACTIVO' AND E.TIPO_EMPLEADO = 'AUXILIAR DE VUELO'; 
+
+
+CREATE OR REPLACE PROCEDURE  ASIGNAR_TRIPULACION(vuelo IN NUMBER)
+AS
+avion_id NUMBER := 0;
+ciudad_id NUMBER :=0;
+CANTIDAD_HORAS_VUELO RUTAS.CANTIDAD_HORAS_PROMEDIO%TYPE;
+NUMEROASIENTOS NUMBER := 0;
+NUMERO_AUXILIARES NUMBER := 0;
+ID_EMPLEADO NUMBER :=0;
+DURACION TIMESTAMP;
+E_ID_PILOTO NUMBER :=0;
+E_ID_COPILOTO NUMBER :=0;
+CURSOR Cp1
+   IS
+     SELECT ID 
+    FROM GETPILOTOS 
+    WHERE CIUDAD = ciudad_id AND ROWNUM <=2;
+CURSOR CAux
+   IS
+     SELECT ID 
+    FROM GET_AUXILIARES 
+    WHERE CIUDAD = ciudad_id AND ROWNUM <=NUMERO_AUXILIARES;
+BEGIN 
+--selecionar el avion
+   SELECT ID,NUMERO_ASIENTOS INTO avion_id,NUMEROASIENTOS
+	FROM DISPONIBILIDAD_AVIONES
+	WHERE VUELO_PROGRAMADO = vuelo AND rownum = 1;
+    DBMS_OUTPUT.PUT_LINE('avion seleccionado '||avion_id);
+    
+    --DURACION Y CIUDAD_ID
+    SELECT SUBSTR(R.CANTIDAD_HORAS_PROMEDIO,12),AE.CIUDAD_PAIS_ID INTO CANTIDAD_HORAS_VUELO ,ciudad_id
+        FROM VUELOS V
+            INNER JOIN PROGRAMACIONES P ON V.PROGRAMACION_ID = P.ID
+            INNER JOIN RUTAS R ON P.RUTA_ID = R.ID
+            INNER JOIN AEROPUERTOS AE ON R.AEROPUERTO_ORIGEN_ID = AE.ID
+        WHERE V.ID = vuelo;
+    DBMS_OUTPUT.PUT_LINE('CANTIDAD_HORAS_PROMEDIO '|| CANTIDAD_HORAS_VUELO);
+        DBMS_OUTPUT.PUT_LINE('CIUDAD '|| ciudad_id);
+    
+    OPEN Cp1;
+    FETCH Cp1 INTO E_ID_PILOTO;
+    DBMS_OUTPUT.PUT_LINE('Piloto seleccionado '||E_ID_PILOTO);
+    FETCH Cp1 INTO E_ID_COPILOTO;
+    DBMS_OUTPUT.PUT_LINE('Copiloto seleccionado '||E_ID_COPILOTO);
+    close Cp1;
+    IF( E_ID_PILOTO=0 OR E_ID_COPILOTO=0) THEN 
+        DBMS_OUTPUT.PUT_LINE('NO HAY PILOTOS Y/O COPILOTOS POR ASIGNAR '|| NUMEROASIENTOS);
+        RETURN;
+    END IF;
+    DBMS_OUTPUT.PUT_LINE('ASIENTOS '|| NUMEROASIENTOS);
+    
+   
+    IF NUMEROASIENTOS > 19 AND NUMEROASIENTOS < 50 THEN
+      NUMERO_AUXILIARES := 1;
+    ELSIF NUMEROASIENTOS >= 50  THEN
+      NUMERO_AUXILIARES := 2 + FLOOR((NUMEROASIENTOS - 50)/50);
+    END IF;
+    
+    
+    --PONER EL DOBLE DEL PERSONAL SI ES MAYOR LA DURACION DEL VUELO ES MAYOR A 6 HORAS
+    IF(TO_TIMESTAMP(CANTIDAD_HORAS_VUELO,'HH24:MI:SS')> TO_TIMESTAMP('06:00','HH24:MI') ) THEN
+        NUMERO_AUXILIARES:= NUMERO_AUXILIARES*2;        
+    END IF;
+    DBMS_OUTPUT.PUT_LINE('NUMERO_AUXILIARES '|| NUMERO_AUXILIARES);
+-- asignar tripulacion
+    OPEN CAux;
+    LOOP
+    FETCH CAux INTO ID_EMPLEADO; 
+      EXIT WHEN CAux%notfound;
+      DBMS_OUTPUT.PUT_LINE('Se programo el Empleado: ' || ID_EMPLEADO || ', al vuelo ID: ' || vuelo);
+      
+-- INGRESO DE LOS AUXILIARES
+      INSERT INTO AUXILIARES_VUELOS (ID,EMPLEADO_ID,VUELO_ID) 
+      VALUES(SEC_AUXILIARES_VUELOS.NEXTVAL,ID_EMPLEADO,vuelo);
+    END LOOP;
+    CLOSE CAux;
+
+-- Actualizo el campo Aeronave_ID en la tabla de programaciones para indicar cual es el avion asignado y cambio el estado de programacion a 'Confirmado'
+    UPDATE VUELOS 
+    SET AVION_ID = avion_id , ESTADO = 'CONFIRMADO', CONFIRMACION_VUELO = 1,
+    PILOTO_ID = E_ID_PILOTO,PILOTO_COPILOTO_ID = E_ID_COPILOTO
+    WHERE ID = vuelo;
+    
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        IF(avion_id <= 0 ) THEN
+            DBMS_OUTPUT.PUT_LINE('NO HAY AVIONES DISPONIBLES');
+            RETURN;
+        END IF; 
+        IF(E_ID_PILOTO <= 0 ) THEN
+            DBMS_OUTPUT.PUT_LINE('NO HAY PILOTOS DISPONIBLES');
+            RETURN;
+        END IF;
+        IF(E_ID_COPILOTO <= 0 ) THEN
+            DBMS_OUTPUT.PUT_LINE('NO HAY COPILOTOS DISPONIBLES');
+            RETURN;
+        END IF;
+
+        WHEN OTHERS THEN
+        	DBMS_OUTPUT.PUT_LINE('ERROR');
+END;
+
+-- IMPLEMENTACION
+
+BEGIN
+ASIGNAR_TRIPULACION(28);
+END;
